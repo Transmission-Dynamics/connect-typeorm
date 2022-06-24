@@ -1,10 +1,10 @@
 {
-  "name": "connect-typeorm",
+  "name": "@Transmission-Dynamics/connect-typeorm",
   "description": "A TypeORM-based session store",
   "version": "1.2.0",
   "main": "out",
   "typings": "out",
-  "repository": "https://github.com/makepost/connect-typeorm",
+  "repository": "https://github.com/transmission-dynamics/connect-typeorm",
   "author": "makepost",
   "contributors": [
     "Nathan Phillip Brink <ohnobinki@ohnopublishing.net>"
@@ -32,6 +32,9 @@
   },
   "peerDependencies": {
     "typeorm": "^0.3.4"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/@Transmission-Dynamics"
   },
   "scripts": {
     "format": "tsc && tslint --fix 'src/**/*.ts' && ava",
