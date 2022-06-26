@@ -110,7 +110,8 @@ export class TypeormStore extends Store {
             .where(`session.expiredAt <= ${Date.now()}`)
             .limit(this.cleanupLimit);
 
-          let ids = "NULL";
+          let ids: string | undefined;
+
           if (this.limitSubquery) {
             ids = $.getQuery();
           } else {
@@ -129,15 +130,17 @@ export class TypeormStore extends Store {
             }
           }
 
-          await this.repository
-            .createQueryBuilder()
-            .delete()
-            .where(`id IN (${ids})`)
-            .execute();
+          if (ids) {
+            await this.repository
+              .createQueryBuilder()
+              .delete()
+              .where(`id IN (${ids})`)
+              .execute();
+          }
         }
 
         try {
-          await this.repository.findOneOrFail({where: { id: sid },  withDeleted: true });
+          await this.repository.findOneOrFail({ where: { id: sid }, withDeleted: true });
           await this.repository.update({
             destroyedAt: IsNull(),
             id: sid,
@@ -165,7 +168,6 @@ export class TypeormStore extends Store {
         }
         this.handleError(err);
       }
-
     })();
   }
 
