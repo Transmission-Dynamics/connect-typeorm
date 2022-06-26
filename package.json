@@ -1,5 +1,5 @@
 {
-  "name": "@Transmission-Dynamics/connect-typeorm",
+  "name": "@transmission-dynamics/connect-typeorm",
   "description": "A TypeORM-based session store",
   "version": "1.2.1",
   "main": "out",
@@ -33,9 +33,6 @@
   },
   "peerDependencies": {
     "typeorm": "^0.3.4"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com/@Transmission-Dynamics"
   },
   "scripts": {
     "format": "tsc && tslint --fix 'src/**/*.ts' && ava",
