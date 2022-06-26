@@ -36,7 +36,7 @@ export class TypeormStore extends Store {
   private readonly onError: ((s: TypeormStore, e: Error) => void) | undefined;
   private readonly ttl: Ttl | undefined;
 
-  private repository!: Repository<ISession>;
+  private repository: Repository<ISession> | undefined;
 
   /**
    * Initializes TypeormStore with the given `options`.
@@ -87,6 +87,8 @@ export class TypeormStore extends Store {
    */
   public override async set(sid: string, session: SessionData, callback?: (err?: any) => void): Promise<void> {
     try {
+      const repository = this.getRepository();
+
       let json: string;
 
       try {
@@ -102,8 +104,8 @@ export class TypeormStore extends Store {
       await this.cleanup();
 
       try {
-        await this.repository.findOneOrFail({ where: { id: sid }, withDeleted: true });
-        await this.repository.update({
+        await repository.findOneOrFail({ where: { id: sid }, withDeleted: true });
+        await repository.update({
           destroyedAt: IsNull(),
           id: sid,
         }, {
@@ -111,7 +113,7 @@ export class TypeormStore extends Store {
           json,
         });
       } catch (_) {
-        await this.repository.insert({
+        await repository.insert({
           expiredAt: Date.now() + ttl * 1000,
           id: sid,
           json,
@@ -133,10 +135,12 @@ export class TypeormStore extends Store {
    */
   public override async destroy(sid: string | string[], callback?: (err?: any) => void): Promise<void> {
     try {
+      const repository = this.getRepository();
+
       this.debug('DEL "%s"', sid);
 
       const sids = Array.isArray(sid) ? sid : [ sid ];
-      const softDelete = sids.map((x) => this.repository.softDelete({ id: x }));
+      const softDelete = sids.map((x) => repository.softDelete({ id: x }));
       await Promise.all(softDelete);
 
       callback?.();
@@ -153,9 +157,10 @@ export class TypeormStore extends Store {
   public override async touch(sid: string, session: SessionData, callback?: (err?: any) => void): Promise<void> {
     try {
       const ttl = this.getTTL(session);
+
       this.debug('EXPIRE "%s" ttl:%s', sid, ttl);
 
-      await this.repository
+      await this.getRepository()
         .createQueryBuilder()
         .update({ expiredAt: Date.now() + ttl * 1000 })
         .whereInIds([sid])
@@ -196,7 +201,7 @@ export class TypeormStore extends Store {
       return;
     }
 
-    const $ = this.repository
+    const $ = this.getRepository()
       .createQueryBuilder("session")
       .withDeleted()
       .select("session.id")
@@ -225,7 +230,7 @@ export class TypeormStore extends Store {
 
     if (!ids) { return; }
 
-    await this.repository
+    await this.getRepository()
       .createQueryBuilder()
       .delete()
       .where(`id IN (${ids})`)
@@ -233,8 +238,15 @@ export class TypeormStore extends Store {
   }
 
   private createQueryBuilder() {
-    return this.repository.createQueryBuilder("session")
+    return this.getRepository().createQueryBuilder("session")
       .where("session.expiredAt > :expiredAt", { expiredAt: Date.now() });
+  }
+
+  private getRepository(): Repository<ISession> {
+    if (!this.repository) {
+      throw new Error('Not connected');
+    }
+    return this.repository;
   }
 
   private getTTL(sess: SessionData, sid?: string) {
