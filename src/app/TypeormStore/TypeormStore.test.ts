@@ -8,8 +8,7 @@ import nullthrows from "nullthrows";
 import * as Supertest from "supertest";
 import {
   Column,
-  Connection,
-  createConnection,
+  DataSource,
   DeleteDateColumn,
   Entity,
   Index,
@@ -217,16 +216,17 @@ class Test {
   public blockReq1: any = null;
   public blockLogout: any = null;
 
-  private connection: Connection | undefined;
+  private dataSource: DataSource | undefined;
 
   public async componentDidMount() {
-    this.connection = await createConnection({
+    this.dataSource = new DataSource({
       database: ":memory:",
       entities: [Session],
       // logging: ["query", "error"],
       synchronize: true,
       type: "sqlite",
     });
+    await this.dataSource.initialize();
 
     this.blockReq1 = new Promise((resolve, _) => {
       this.unblockReq1 = resolve;
@@ -235,7 +235,7 @@ class Test {
       this.unblockLogout = resolve;
     });
 
-    this.repository = this.connection.getRepository(Session);
+    this.repository = this.dataSource.getRepository(Session);
 
     this.express.use(
       ExpressSession({
@@ -285,10 +285,10 @@ class Test {
   }
 
   public async componentWillUnmount() {
-    if (this.connection) {
-      await this.connection.close();
+    if (this.dataSource) {
+      await this.dataSource.destroy();
 
-      this.connection = undefined;
+      this.dataSource = undefined;
     }
   }
 }

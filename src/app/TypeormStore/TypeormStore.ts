@@ -226,7 +226,7 @@ export class TypeormStore extends Store {
   /**
    * Fetches all sessions.
    */
-  public all(callback: (err: any, result: Array<SessionData & { id: string }>) => void) {
+  public all(callback: (err: any, result: (SessionData & { id: string })[]) => void) {
     (async () => {
       try {
         const sessions = await this.createQueryBuilder()

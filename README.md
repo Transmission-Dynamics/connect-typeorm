@@ -26,6 +26,9 @@ export class Session implements ISession {
   @PrimaryColumn("varchar", { length: 255 })
   public id = "";
 
+  @DeleteDateColumn()
+  public destroyedAt?: Date;
+
   @Column("text")
   public json = "";
 }

@@ -8,8 +8,7 @@ import nullthrows from "nullthrows";
 import * as Supertest from "supertest";
 import {
   Column,
-  Connection,
-  createConnection,
+  DataSource,
   DeleteDateColumn,
   Entity,
   Index,
@@ -36,18 +35,19 @@ class Session implements ISession {
 }
 
 class Test {
-  public connection!: Connection;
+  public dataSource!: DataSource;
   public express = Express();
   public request = Supertest.agent(this.express);
   public repository!: Repository<Session>;
   public async connect() {
-    this.connection = await createConnection({
+    this.dataSource = new DataSource({
       database: ":memory:",
       entities: [Session],
       synchronize: true,
       type: "sqlite",
     });
-    this.repository = this.connection.getRepository(Session);
+    await this.dataSource.initialize();
+    this.repository = this.dataSource.getRepository(Session);
   }
   // Between calling connect() and route(), I'll register stores differently.
   public route() {
@@ -82,7 +82,7 @@ test("increments as expected when no error happens", async (t) => {
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).body, 2);
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
 });
 
 test("disconnects on error to prevent more damage", async (t) => {
@@ -102,16 +102,16 @@ test("disconnects on error to prevent more damage", async (t) => {
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 200);
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 500);
 
-  await ctx.connection.connect();
+  await ctx.dataSource.initialize();
   // Database reconnected, but express-session has set storeReady=false.
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 500);
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
 });
 
 test("but allows you to override this", async (t) => {
@@ -135,19 +135,19 @@ test("but allows you to override this", async (t) => {
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 200);
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 500);
   t.is(!!error.message, true);
 
   error = new Error();
-  await ctx.connection.connect();
+  await ctx.dataSource.initialize();
   // Database reconnected, and express-session remains storeReady=true.
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 200);
   t.is(error.message, "");
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
 });
 
 test("with the same behavior, if you wish", async (t) => {
@@ -175,14 +175,14 @@ test("with the same behavior, if you wish", async (t) => {
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 200);
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 500);
   t.is(!!error.message, true);
 
-  await ctx.connection.connect();
+  await ctx.dataSource.initialize();
   await ctx.request.post("/views");
   t.is((await ctx.request.get("/views")).status, 500);
 
-  await ctx.connection.close();
+  await ctx.dataSource.destroy();
 });
