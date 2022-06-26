@@ -3,6 +3,7 @@
  * Copyright(c) 2012 TJ Holowaychuk <tj@vision-media.ca>
  * Copyright(c) 2017, 2018 makepost <makepost@firemail.cc>
  * Copyright(c) 2018 Nathan Phillip Brink <ohnobinki@ohnopublishing.net>
+ * Copyright(c) 2022 Krzysztof Rosinski <krzysiek@transmissiondynamics.pl>
  * MIT Licensed
  */
 
@@ -84,57 +85,59 @@ export class TypeormStore extends Store {
    * Commits the given `sess` object associated with the given `sid`.
    */
   public set(sid: string, session: SessionData, callback?: (err?: any) => void) {
-    const args = [sid];
-    let json: string;
+    (async () => {
+      try {
+        const args = [sid];
+        let json: string;
 
-    try {
-      json = JSON.stringify(session);
-    } catch (er) {
-      return callback ? callback(er) : undefined;
-    }
+        try {
+          json = JSON.stringify(session);
+        } catch (er) {
+          return callback ? callback(er) : undefined;
+        }
 
-    args.push(json);
+        args.push(json);
 
-    const ttl = this.getTTL(session, sid);
-    args.push("EX", ttl.toString());
-    this.debug('SET "%s" %s ttl:%s', sid, json, ttl);
+        const ttl = this.getTTL(session, sid);
+        args.push("EX", ttl.toString());
+        this.debug('SET "%s" %s ttl:%s', sid, json, ttl);
 
-    (this.cleanupLimit
-      ? (() => {
+        if (this.cleanupLimit) {
           const $ = this.repository
             .createQueryBuilder("session")
             .withDeleted()
             .select("session.id")
             .where(`session.expiredAt <= ${Date.now()}`)
             .limit(this.cleanupLimit);
-          return this.limitSubquery
-            ? Promise.resolve($.getQuery())
-            : $.getMany().then((xs) =>
-                xs.length
-                  ? xs
-                      .map((x) =>
-                        typeof x.id === "string"
-                          ? `'${x.id
-                              .replace(/\\/g, "\\\\")
-                              .replace(/'/g, "\\'")}'`
-                          : `${x.id}`,
-                      )
-                      .join(", ")
-                  : "NULL",
-              );
-        })().then((ids) =>
-          this.repository
+
+          let ids = "NULL";
+          if (this.limitSubquery) {
+            ids = $.getQuery();
+          } else {
+            const xs = await $.getMany();
+
+            if (xs.length > 0) {
+              ids = xs.map((x) => {
+                if (typeof x.id === "string") {
+                  return `'${x.id
+                    .replace(/\\/g, "\\\\")
+                    .replace(/'/g, "\\'")}'`;
+                } else {
+                  return `${x.id}`;
+                }
+              }).join(", ");
+            }
+          }
+
+          await this.repository
             .createQueryBuilder()
             .delete()
             .where(`id IN (${ids})`)
-            .execute(),
-        )
-      : Promise.resolve()
-    )
-      // @ts-ignore
-      .then(async () => {
+            .execute();
+        }
+
         try {
-          await this.repository.findOneOrFail({where: { id: sid },  withDeleted: true});
+          await this.repository.findOneOrFail({where: { id: sid },  withDeleted: true });
           await this.repository.update({
             destroyedAt: IsNull(),
             id: sid,
@@ -149,21 +152,21 @@ export class TypeormStore extends Store {
             json,
           });
         }
-      })
-      .then(() => {
+
         this.debug("SET complete");
 
         if (callback) {
           callback();
         }
-      })
-      .catch((er: any) => {
+      } catch (e) {
+        const err = e as Error;
         if (callback) {
-          callback(er);
+          callback(err);
         }
+        this.handleError(err);
+      }
 
-        this.handleError(er);
-      });
+    })();
   }
 
   /**
