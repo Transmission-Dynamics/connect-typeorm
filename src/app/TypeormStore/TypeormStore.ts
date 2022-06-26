@@ -29,12 +29,14 @@ interface ITypeormStoreOptions {
 }
 
 export class TypeormStore extends Store {
-  private cleanupLimit: number | undefined;
-  private debug = Debug("connect:typeorm");
-  private limitSubquery = true;
-  private onError: ((s: TypeormStore, e: Error) => void) | undefined;
+  private readonly debug = Debug("connect:typeorm");
+
+  private readonly cleanupLimit: number | undefined;
+  private readonly limitSubquery: boolean;
+  private readonly onError: ((s: TypeormStore, e: Error) => void) | undefined;
+  private readonly ttl: Ttl | undefined;
+
   private repository!: Repository<ISession>;
-  private ttl: Ttl | undefined;
 
   /**
    * Initializes TypeormStore with the given `options`.
@@ -42,210 +44,192 @@ export class TypeormStore extends Store {
   constructor(options: Partial<ITypeormStoreOptions> = {}) {
     super();
     this.cleanupLimit = options.cleanupLimit;
-    if (options.limitSubquery !== undefined) {
-      this.limitSubquery = options.limitSubquery;
-    }
+    this.limitSubquery = options.limitSubquery ?? true;
     this.onError = options.onError;
     this.ttl = options.ttl;
   }
 
-  public connect(repository: Repository<ISession>) {
+  public connect(repository: Repository<ISession>): this {
     this.repository = repository;
     this.emit("connect");
+
     return this;
   }
 
   /**
    * Attempts to fetch session by the given `sid`.
    */
-  public get(sid: string, callback: (err?: any, result?: SessionData) => void) {
-    (async () => {
-      try {
-        this.debug('GET "%s"', sid);
+  public override async get(sid: string, callback: (err?: any, result?: SessionData) => void): Promise<void> {
+    try {
+      this.debug('GET "%s"', sid);
 
-        const session = await this.createQueryBuilder()
-          .andWhere("session.id = :id", { id: sid })
-          .getOne();
+      const session = await this.createQueryBuilder()
+        .andWhere("session.id = :id", { id: sid })
+        .getOne();
 
-        if (!session) { return callback(); }
-
-        this.debug("GOT %s", session.json);
-
-        const result: SessionData = JSON.parse(session.json);
-        callback(undefined, result);
-      } catch (e) {
-        const err = e as Error;
-        callback(err);
-        this.handleError(err);
+      if (!session) {
+        return callback();
       }
-    })();
+
+      this.debug("GOT %s", session.json);
+
+      const result: SessionData = JSON.parse(session.json);
+      callback(undefined, result);
+    } catch (e) {
+      const err = e as Error;
+      callback(err);
+      this.handleError(err);
+    }
   }
 
   /**
    * Commits the given `sess` object associated with the given `sid`.
    */
-  public set(sid: string, session: SessionData, callback?: (err?: any) => void) {
-    (async () => {
+  public override async set(sid: string, session: SessionData, callback?: (err?: any) => void): Promise<void> {
+    try {
+      let json: string;
+
       try {
-        const args = [sid];
-        let json: string;
-
-        try {
-          json = JSON.stringify(session);
-        } catch (er) {
-          return callback ? callback(er) : undefined;
-        }
-
-        args.push(json);
-
-        const ttl = this.getTTL(session, sid);
-        args.push("EX", ttl.toString());
-        this.debug('SET "%s" %s ttl:%s', sid, json, ttl);
-
-        if (this.cleanupLimit) {
-          const $ = this.repository
-            .createQueryBuilder("session")
-            .withDeleted()
-            .select("session.id")
-            .where(`session.expiredAt <= ${Date.now()}`)
-            .limit(this.cleanupLimit);
-
-          let ids: string | undefined;
-
-          if (this.limitSubquery) {
-            ids = $.getQuery();
-          } else {
-            const xs = await $.getMany();
-
-            if (xs.length > 0) {
-              ids = xs.map((x) => {
-                if (typeof x.id === "string") {
-                  return `'${x.id
-                    .replace(/\\/g, "\\\\")
-                    .replace(/'/g, "\\'")}'`;
-                } else {
-                  return `${x.id}`;
-                }
-              }).join(", ");
-            }
-          }
-
-          if (ids) {
-            await this.repository
-              .createQueryBuilder()
-              .delete()
-              .where(`id IN (${ids})`)
-              .execute();
-          }
-        }
-
-        try {
-          await this.repository.findOneOrFail({ where: { id: sid }, withDeleted: true });
-          await this.repository.update({
-            destroyedAt: IsNull(),
-            id: sid,
-          }, {
-            expiredAt: Date.now() + ttl * 1000,
-            json,
-          });
-        } catch (_) {
-          await this.repository.insert({
-            expiredAt: Date.now() + ttl * 1000,
-            id: sid,
-            json,
-          });
-        }
-
-        this.debug("SET complete");
-
-        if (callback) {
-          callback();
-        }
-      } catch (e) {
-        const err = e as Error;
-        if (callback) {
-          callback(err);
-        }
-        this.handleError(err);
+        json = JSON.stringify(session);
+      } catch (er) {
+        return callback?.(er);
       }
-    })();
+
+      const ttl = this.getTTL(session, sid);
+
+      this.debug('SET "%s" %s ttl:%s', sid, json, ttl);
+
+      await this.cleanup();
+
+      try {
+        await this.repository.findOneOrFail({ where: { id: sid }, withDeleted: true });
+        await this.repository.update({
+          destroyedAt: IsNull(),
+          id: sid,
+        }, {
+          expiredAt: Date.now() + ttl * 1000,
+          json,
+        });
+      } catch (_) {
+        await this.repository.insert({
+          expiredAt: Date.now() + ttl * 1000,
+          id: sid,
+          json,
+        });
+      }
+
+      this.debug("SET complete");
+
+      callback?.();
+    } catch (e) {
+      const err = e as Error;
+      callback?.(err);
+      this.handleError(err);
+    }
   }
 
   /**
    * Destroys the session associated with the given `sid`.
    */
-  public destroy(sid: string | string[], callback?: (err?: any) => void) {
-    (async () => {
-      try {
-        this.debug('DEL "%s"', sid);
+  public override async destroy(sid: string | string[], callback?: (err?: any) => void): Promise<void> {
+    try {
+      this.debug('DEL "%s"', sid);
 
-        const sids = Array.isArray(sid) ? sid : [sid];
-        const softDelete = sids.map((x) => this.repository.softDelete({ id: x }));
-        await Promise.all(softDelete);
+      const sids = Array.isArray(sid) ? sid : [ sid ];
+      const softDelete = sids.map((x) => this.repository.softDelete({ id: x }));
+      await Promise.all(softDelete);
 
-        if (callback) {
-          callback();
-        }
-      } catch (e) {
-        const err = e as Error;
-        if (callback) {
-          callback(err);
-        }
-        this.handleError(err);
-      }
-    })();
+      callback?.();
+    } catch (e) {
+      const err = e as Error;
+      callback?.(err);
+      this.handleError(err);
+    }
   }
 
   /**
    * Refreshes the time-to-live for the session with the given `sid`.
    */
-  public touch(sid: string, session: SessionData, callback?: (err?: any) => void) {
-    (async () => {
-      try {
-        const ttl = this.getTTL(session);
-        this.debug('EXPIRE "%s" ttl:%s', sid, ttl);
+  public override async touch(sid: string, session: SessionData, callback?: (err?: any) => void): Promise<void> {
+    try {
+      const ttl = this.getTTL(session);
+      this.debug('EXPIRE "%s" ttl:%s', sid, ttl);
 
-        await this.repository
-          .createQueryBuilder()
-          .update({ expiredAt: Date.now() + ttl * 1000 })
-          .whereInIds([sid])
-          .execute();
+      await this.repository
+        .createQueryBuilder()
+        .update({ expiredAt: Date.now() + ttl * 1000 })
+        .whereInIds([sid])
+        .execute();
 
-        this.debug("EXPIRE complete");
-        if (callback) {
-          callback();
-        }
-      } catch (e) {
-        const err = e as Error;
-        if (callback) {
-          callback(err);
-        }
-        this.handleError(err);
-      }
-    })();
+      this.debug("EXPIRE complete");
+      callback?.();
+    } catch (e) {
+      const err = e as Error;
+      callback?.(err);
+      this.handleError(err);
+    }
   }
 
   /**
    * Fetches all sessions.
    */
-  public all(callback: (err: any, result: (SessionData & { id: string })[]) => void) {
-    (async () => {
-      try {
-        const sessions = await this.createQueryBuilder()
-          .getMany();
+  public override async all(callback: (err: any, result: (SessionData & { id: string })[]) => void): Promise<void> {
+    try {
+      const sessions = await this.createQueryBuilder()
+        .getMany();
 
-        const result = sessions.map((session) => {
-          const sessionData: SessionData = JSON.parse(session.json);
-          return { id: session.id, ...sessionData };
-        });
+      const result = sessions.map((session) => {
+        const sessionData: SessionData = JSON.parse(session.json);
+        return { id: session.id, ...sessionData };
+      });
 
-        callback(undefined, result);
-      } catch (e) {
-        const err = e as Error;
-        callback(err, []);
-        this.handleError(err);
+      callback(undefined, result);
+    } catch (e) {
+      const err = e as Error;
+      callback(err, []);
+      this.handleError(err);
+    }
+  }
+
+  private async cleanup(): Promise<void> {
+    if (!this.cleanupLimit) {
+      return;
+    }
+
+    const $ = this.repository
+      .createQueryBuilder("session")
+      .withDeleted()
+      .select("session.id")
+      .where(`session.expiredAt <= ${Date.now()}`)
+      .limit(this.cleanupLimit);
+
+    let ids: string | undefined;
+
+    if (this.limitSubquery) {
+      ids = $.getQuery();
+    } else {
+      const xs = await $.getMany();
+
+      if (xs.length > 0) {
+        ids = xs.map((x) => {
+          if (typeof x.id === "string") {
+            return `'${x.id
+              .replace(/\\/g, "\\\\")
+              .replace(/'/g, "\\'")}'`;
+          } else {
+            return `${x.id}`;
+          }
+        }).join(", ");
       }
-    })();
+    }
+
+    if (!ids) { return; }
+
+    await this.repository
+      .createQueryBuilder()
+      .delete()
+      .where(`id IN (${ids})`)
+      .execute();
   }
 
   private createQueryBuilder() {

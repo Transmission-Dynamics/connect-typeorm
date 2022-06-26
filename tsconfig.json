@@ -9,6 +9,7 @@
     "strictNullChecks": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noImplicitOverride": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "declaration": true

@@ -7,7 +7,7 @@ A TypeORM-based session store.
 Configure TypeORM with back end of your choice:
 
 ```bash
-yarn add @types/express-session connect-typeorm express-session typeorm sqlite3
+yarn add @transmission-dynamics/connect-typeorm @types/express-session express-session typeorm sqlite3
 ```
 
 Implement the `Session` entity:
