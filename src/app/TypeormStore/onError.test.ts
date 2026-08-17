@@ -2,10 +2,10 @@
 // tslint:disable:no-implicit-dependencies
 
 import test from "ava";
-import * as Express from "express";
-import * as ExpressSession from "express-session";
+import Express from "express";
+import ExpressSession from "express-session";
 import nullthrows from "nullthrows";
-import * as Supertest from "supertest";
+import Supertest from "supertest";
 import {
   Column,
   DataSource,
@@ -44,7 +44,7 @@ class Test {
       database: ":memory:",
       entities: [Session],
       synchronize: true,
-      type: "sqlite",
+      type: "better-sqlite3",
     });
     await this.dataSource.initialize();
     this.repository = this.dataSource.getRepository(Session);
