@@ -32,7 +32,7 @@
     "express-session": "^1.15.6"
   },
   "peerDependencies": {
-    "typeorm": "^0.3.6"
+    "typeorm": "^0.3.6 || ^1.0.0"
   },
   "scripts": {
     "format": "tsc && tslint --fix 'src/**/*.ts' && ava",
