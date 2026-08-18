@@ -82,6 +82,29 @@ Constructor receives an object. Following properties may be included:
 
 -	`onError` Error handler for database exception. It is a function of the form `(store: TypeormStore, error: Error) => void`. If not set, any database error will cause the TypeormStore to be marked as "disconnected", and stop reading/writing to the database, therefore not loading sessions and causing all requests to be considered unauthenticated.
 
+## Publishing
+
+Update the package version, log in to the public npm registry, and verify the
+active account:
+
+```bash
+npm login --registry=https://registry.npmjs.org/
+npm whoami --registry=https://registry.npmjs.org/ \
+  --@transmission-dynamics:registry=https://registry.npmjs.org/
+```
+
+Publish the package with an explicit override for the
+`@transmission-dynamics` scope:
+
+```bash
+npm publish \
+  --@transmission-dynamics:registry=https://registry.npmjs.org/ \
+  --access public
+```
+
+The scoped override ensures that the package is published to the public npm
+registry even when another scoped registry is configured locally.
+
 ## License
 
 MIT
