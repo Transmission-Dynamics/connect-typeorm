@@ -1,7 +1,7 @@
 {
   "name": "@transmission-dynamics/connect-typeorm",
   "description": "A TypeORM-based session store",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "main": "out",
   "typings": "out",
   "repository": "https://github.com/transmission-dynamics/connect-typeorm",

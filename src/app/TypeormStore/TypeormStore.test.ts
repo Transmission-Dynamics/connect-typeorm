@@ -117,7 +117,7 @@ test("touches", async (t) => {
   t.is((await request.get("/views")).body, 1);
 
   // Finally let session expire.
-  await sleep(ttl);
+  await sleep(ttl + 0.25);
   t.is((await request.get("/views")).body, 0);
 });
 
