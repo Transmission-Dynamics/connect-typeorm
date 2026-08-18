@@ -2,10 +2,10 @@
 // tslint:disable:no-implicit-dependencies
 
 import test from "ava";
-import * as Express from "express";
-import * as ExpressSession from "express-session";
+import Express from "express";
+import ExpressSession from "express-session";
 import nullthrows from "nullthrows";
-import * as Supertest from "supertest";
+import Supertest from "supertest";
 import {
   Column,
   DataSource,
@@ -128,7 +128,7 @@ test("touches, handling error", async (t) => {
 
   await ctx.componentWillUnmount();
 
-  await ctx.request.get("/views").expect(/database.*not\ established/i);
+  await ctx.request.get("/views").expect(/database.*not\ (established|open)/i);
 });
 
 test("race condition", async (t) => {
@@ -224,7 +224,7 @@ class Test {
       entities: [Session],
       // logging: ["query", "error"],
       synchronize: true,
-      type: "sqlite",
+      type: "better-sqlite3",
     });
     await this.dataSource.initialize();
 

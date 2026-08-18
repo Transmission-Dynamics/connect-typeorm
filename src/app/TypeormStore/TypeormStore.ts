@@ -7,7 +7,7 @@
  * MIT Licensed
  */
 
-import * as Debug from "debug";
+import Debug from "debug";
 import { SessionData, Store } from "express-session";
 import { IsNull, Repository } from "typeorm";
 import { ISession } from "../../domain/Session/ISession";
