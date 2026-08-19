@@ -41,6 +41,6 @@
     "format": "tsc && eslint --fix 'src/**/*.ts' && ava",
     "prepare": "tsc",
     "test": "tsc && nyc ava && nyc report --reporter=html && eslint 'src/**/*.ts'",
-    "test-extended": "tsc && tav typeorm '^1.0.0' ava && npm i && npm test"
+    "test-extended": "tsc && tav --registry=https://registry.npmjs.org/ typeorm '^1.0.0' 'ava --timeout=30s' && npm i --registry=https://registry.npmjs.org/ && npm test"
   }
 }
